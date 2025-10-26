@@ -35,10 +35,12 @@ def root():
 def health():
     return {"status": "ok"}
 
+from fastapi.routing import APIRoute
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
+@app.get("/_routes")
+def list_routes():
+    return [r.path for r in app.router.routes]
+
 
 @app.get("/public/practices", response_model=list[PracticeOut])
 def list_practices(db: Session = Depends(get_db)):
