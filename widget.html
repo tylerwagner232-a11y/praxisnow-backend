@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Buchungs-Widget (Demo)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 20px; }
+    .slot { display:inline-block; padding:10px 12px; margin:6px; border:1px solid #ccc; border-radius:8px; cursor:pointer; }
+    .slot:hover { background:#f2f6ff; }
+    .row { margin-bottom: 12px; }
+    button { padding:10px 14px; border-radius:8px; border:0; background:#2B6CB0; color:#fff; cursor:pointer; }
+    input, select { padding:8px; border:1px solid #ccc; border-radius:6px; min-width: 220px; }
+  </style>
+</head>
+<body>
+  <h1>Termin buchen (Demo)</h1>
+  <div class="row">
+    <label>API Base: <input id="apiBase" value="http://127.0.0.1:8000"></label>
+  </div>
+  <div class="row">
+    <button onclick="loadPractices()">Praxen laden</button>
+  </div>
+  <div id="practices"></div>
+  <hr/>
+  <div id="slots"></div>
+  <hr/>
+  <div id="booking"></div>
+
+<script>
+let PRACTICE = null;
+let SERVICE = null;
+let RESOURCE = null;
+let SELECTED_SLOT = null;
+
+function el(id){ return document.getElementById(id); }
+function apiBase(){ return el('apiBase').value.trim().replace(/\/$/, ''); }
+
+async function loadPractices(){
+  const res = await fetch(apiBase() + '/public/practices');
+  const data = await res.json();
+  const c = document.getElementById('practices');
+  c.innerHTML = '<h3>Praxen</h3>';
+  data.forEach(p => {
+    const btn = document.createElement('button');
+    btn.textContent = p.name + ' (' + (p.city || '') + ')';
+    btn.onclick = () => loadPracticeDetail(p.id);
+    c.appendChild(btn);
+    c.appendChild(document.createTextNode(' '));
+  });
+}
+
+async function loadPracticeDetail(id){
+  const res = await fetch(apiBase() + '/public/practices/' + id);
+  const p = await res.json();
+  PRACTICE = p;
+
+  const s = p.services[0];
+  const r = p.resources[0];
+  SERVICE = s; RESOURCE = r;
+
+  const c = document.getElementById('practices');
+  c.innerHTML = `<h3>${p.name}</h3>
+  <div>Stadt: ${p.city || '-'}</div>
+  <div>Zeitzone: ${p.time_zone}</div>
+  <div>Leistung: ${s ? s.name + ' ('+s.duration_min+' Min)' : '-'}</div>
+  <div>Ressource: ${r ? r.name : '-'}</div>
+  <div class="row"><button onclick="loadSlots()">Freie Slots laden</button></div>`;
+}
+
+async function loadSlots(){
+  const res = await fetch(apiBase() + `/public/practices/${PRACTICE.id}/slots?days=14&service_id=${SERVICE.id}&resource_id=${RESOURCE.id}`);
+  const slots = await res.json();
+  const c = document.getElementById('slots');
+  c.innerHTML = '<h3>Freie Slots (nächste 14 Tage)</h3>';
+  if(!slots.length){ c.innerHTML += '<div>Keine Slots gefunden.</div>'; return; }
+  slots.forEach(sl => {
+    const d = document.createElement('div');
+    d.className = 'slot';
+    d.textContent = sl.start_ts + ' – ' + sl.end_ts;
+    d.onclick = () => showBooking(sl);
+    c.appendChild(d);
+  });
+}
+
+function showBooking(sl){
+  SELECTED_SLOT = sl;
+  const b = document.getElementById('booking');
+  b.innerHTML = `<h3>Termin buchen</h3>
+    <div class="row"><label>Name <input id="b_name" placeholder="Max Mustermann"/></label></div>
+    <div class="row"><label>E-Mail <input id="b_email" placeholder="max@example.com"/></label></div>
+    <div class="row"><button onclick="book()">Verbindlich buchen</button></div>`;
+}
+
+async function book(){
+  const name = document.getElementById('b_name').value;
+  const email = document.getElementById('b_email').value;
+  const payload = {
+    practice_id: PRACTICE.id,
+    resource_id: RESOURCE.id,
+    service_id: SERVICE.id,
+    start_ts_iso_local: SELECTED_SLOT.start_ts,
+    patient_name: name,
+    patient_email: email
+  };
+  const res = await fetch(apiBase() + '/public/appointments', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(payload)
+  });
+  if(res.ok){
+    const data = await res.json();
+    alert('Termin gebucht! ID: ' + data.id);
+    loadSlots();
+  } else {
+    const err = await res.json().catch(()=>({detail:'Fehler'}));
+    alert('Fehler: ' + (err.detail || res.status));
+  }
+}
+</script>
+</body>
+</html>
