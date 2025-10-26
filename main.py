@@ -26,6 +26,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/")
+def root():
+    return {"message": "PraxisNow API – siehe /health und /docs"}
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
