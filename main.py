@@ -11,20 +11,16 @@ from zoneinfo import ZoneInfo
 
 from typing import Optional
 
-app = FastAPI(title="Mini Doctolib Backend (Starter)")
+from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
-    allow_origin_regex=r"https://.*\.lovable\.app$",
+    allow_origin_regex=r"https://.*\.lovable\.app$",  # erlaubt alle Lovable-Previews
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 @app.get("/")
 def root():
