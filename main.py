@@ -1,21 +1,22 @@
-import uuid
-from datetime import datetime, timedelta
+# --- imports (oben) ---
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+from typing import Optional
+from zoneinfo import ZoneInfo
+
 from database import Base, engine, get_db
 from models import Practice, Resource, Service, Appointment
 from schemas import PracticeOut, PracticeDetail, SlotOut, AppointmentIn, AppointmentOut
 from slot_engine import generate_slots
-from zoneinfo import ZoneInfo
 
-from typing import Optional
+# --- app erstellen (vor JEDEM app.* Aufruf) ---
+app = FastAPI(title="PraxisNow API")
 
-from fastapi.middleware.cors import CORSMiddleware
-
+# --- CORS zuerst anhängen ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"https://.*\.lovable\.app$",  # erlaubt alle Lovable-Previews
+    allow_origin_regex=r"https://.*\.lovable\.app$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
