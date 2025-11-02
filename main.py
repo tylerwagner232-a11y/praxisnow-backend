@@ -4,6 +4,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import Optional
 from zoneinfo import ZoneInfo
+import uuid
+from datetime import datetime, timedelta
+
 
 from database import Base, engine, get_db
 from models import Practice, Resource, Service, Appointment
