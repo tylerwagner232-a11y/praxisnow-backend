@@ -20,7 +20,12 @@ app = FastAPI(title="PraxisNow API")
 app.add_middleware(
     CORSMiddleware,
     # erlaube sowohl .app als auch .dev Previews von Lovable
-    allow_origin_regex=r"https://.*\.(lovable\.app|lovable\.dev)$",
+    allow_origins=[
+        "https://lovable.app",
+        "https://lovable.dev",
+    ],
+    # optionaler Subdomain-Teil vor .lovable.app|.lovable.dev
+    allow_origin_regex=r"^https://([a-z0-9-]+\.)?(lovable\.app|lovable\.dev)$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
