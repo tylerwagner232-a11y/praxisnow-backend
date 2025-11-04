@@ -19,16 +19,9 @@ app = FastAPI(title="PraxisNow API")
 # --- CORS zuerst anhängen ---
 app.add_middleware(
     CORSMiddleware,
-    # Root-Domains explizit erlauben
-    allow_origins=[
-        "https://lovable.app",
-        "https://lovable.dev",
-        "https://lovableproject.com",
-    ],
-    # Subdomains erlauben (xyz.lovable.app|dev|lovableproject.com)
-    allow_origin_regex=r"^https://([a-z0-9-]+\.)?(lovable\.app|lovable\.dev|lovableproject\.com)$",
+    allow_origins=["*"],  # NUR TESTWEISE!
     allow_credentials=True,
-    allow_methods=["GET","POST","PATCH","OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
