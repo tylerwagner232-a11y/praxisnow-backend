@@ -2,6 +2,25 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime
 
+# ── NEU: Auth ─────────────────────────────────────────────
+class RegisterIn(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8)
+    name: str = Field(min_length=2)
+    phone: Optional[str] = None
+    address: Optional[str] = None
+
+class LoginIn(BaseModel):
+    email: EmailStr
+    password: str
+
+class UserOut(BaseModel):
+    id: str
+    email: EmailStr
+    name: str
+    phone: Optional[str] = None
+    address: Optional[str] = None
+
 class PracticeOut(BaseModel):
     id: str
     name: str
@@ -56,3 +75,22 @@ class AppointmentOut(BaseModel):
     start_ts_utc: datetime
     end_ts_utc: datetime
     status: str
+
+# ── NEU: Auth ─────────────────────────────────────────────
+class RegisterIn(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8)
+    name: str = Field(min_length=2)
+    phone: Optional[str] = None
+    address: Optional[str] = None
+
+class LoginIn(BaseModel):
+    email: EmailStr
+    password: str
+
+class UserOut(BaseModel):
+    id: str
+    email: EmailStr
+    name: str
+    phone: Optional[str] = None
+    address: Optional[str] = None
