@@ -1,15 +1,23 @@
 # --- imports (oben) ---
-from fastapi import FastAPI, Depends, HTTPException, Query
+from sqlalchemy import Column, String, DateTime, ForeignKey
+from datetime import datetime, timedelta
+from database import Base, engine, get_db
+from fastapi import FastAPI, Depends, HTTPException, Query, Request, Response
+from models import Practice, Resource, Service, Appointment, User
+from schemas import (
+    PracticeOut, PracticeDetail, SlotOut,
+    AppointmentIn, AppointmentOut,
+    RegisterIn, LoginIn, UserOut                                              # neu
+)
+from auth import hash_pw, check_pw, make_jwt, parse_jwt
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import Optional
 from zoneinfo import ZoneInfo
 import uuid
-from datetime import datetime, timedelta
 
 
-from database import Base, engine, get_db
-from models import Practice, Resource, Service, Appointment
+
 from schemas import PracticeOut, PracticeDetail, SlotOut, AppointmentIn, AppointmentOut
 from slot_engine import generate_slots
 
@@ -38,7 +46,63 @@ def root():
 def health():
     return {"status": "ok"}
 
+def current_user(req: Request, db: Session = Depends(get_db)) -> User:
+    token = req.cookies.get("session")
+    uid = parse_jwt(token) if token else None
+    if not uid:
+        raise HTTPException(401, "Bitte einloggen")
+    u = db.query(User).get(uid)
+    if not u:
+        raise HTTPException(401, "Bitte einloggen")
+    return u
+
+# --- Authentifizierung: Registrieren, Login, Logout, Me ---
+@app.post("/auth/register", response_model=UserOut)
+def register(payload: RegisterIn, db: Session = Depends(get_db), resp: Response = None):
+    if db.query(User).filter(User.email == payload.email).first():
+        raise HTTPException(400, "E-Mail bereits registriert")
+    u = User(
+        id=str(uuid.uuid4()),
+        email=payload.email,
+        password_hash=hash_pw(payload.password),
+        name=payload.name,
+        phone=payload.phone,
+        address=payload.address,
+    )
+    db.add(u)
+    db.commit()
+    db.refresh(u)
+    token = make_jwt(u.id)
+    resp.set_cookie(
+        "session", token,
+        httponly=True, samesite="lax", secure=True, max_age=7*24*3600
+    )
+    return UserOut.model_validate(u.__dict__)
+
+@app.post("/auth/login", response_model=UserOut)
+def login(payload: LoginIn, db: Session = Depends(get_db), resp: Response = None):
+    u = db.query(User).filter(User.email == payload.email).first()
+    if not u or not check_pw(payload.password, u.password_hash):
+        raise HTTPException(401, "Ungültige Zugangsdaten")
+    token = make_jwt(u.id)
+    resp.set_cookie(
+        "session", token,
+        httponly=True, samesite="lax", secure=True, max_age=7*24*3600
+    )
+    return UserOut.model_validate(u.__dict__)
+
+@app.get("/auth/me", response_model=UserOut)
+def me(u: User = Depends(current_user)):
+    return UserOut.model_validate(u.__dict__)
+
+@app.post("/auth/logout")
+def logout(resp: Response):
+    resp.delete_cookie("session")
+    return {"ok": True}
+
+
 from fastapi.routing import APIRoute
+
 
 @app.get("/_routes")
 def list_routes():
@@ -69,7 +133,11 @@ def practice_slots(
     return generate_slots(db, practice_id=practice_id, days=days, service_id=service_id, resource_id=resource_id)
 
 @app.post("/public/appointments", response_model=AppointmentOut)
-def book_appointment(payload: AppointmentIn, db: Session = Depends(get_db)):
+def book_appointment(
+    payload: AppointmentIn,
+    db: Session = Depends(get_db),
+    u: User = Depends(current_user)  # <-- NEU: nur eingeloggte Nutzer
+):
     # 1) Validierung: gehören alle IDs zur gleichen Praxis?
     p = db.query(Practice).filter(Practice.id == payload.practice_id).first()
     r = db.query(Resource).filter(
@@ -118,13 +186,13 @@ def book_appointment(payload: AppointmentIn, db: Session = Depends(get_db)):
         start_ts_utc=start_utc,
         end_ts_utc=end_utc,
         status="BOOKED",
-        source="PATIENT"
+        source="PATIENT",
+        user_id=u.id,  # <-- NEU
     )
     db.add(appt)
     db.commit()
     db.refresh(appt)
 
-    # 7) IMMER etwas zurückgeben
     return AppointmentOut(
         id=appt.id,
         start_ts_utc=appt.start_ts_utc,
@@ -242,6 +310,14 @@ def reschedule_appointment(appointment_id: str, payload: RescheduleIn, db: Sessi
         raise HTTPException(409, "Booking conflict")
     db.refresh(appt)
     return AppointmentOut(id=appt.id, start_ts_utc=appt.start_ts_utc, end_ts_utc=appt.end_ts_utc, status=appt.status)
+
+
+# Deine bestehenden Models (Practice, Resource, Service) bleiben unverändert …
+
+
+
+    # ── NEU: Zuordnung zum registrierten User ──
+    user_id = Column(String, ForeignKey("users.id"), nullable=True)
 
 # ---------------------------------------------
 # Praxis: Termine auflisten

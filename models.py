@@ -1,5 +1,6 @@
 from sqlalchemy import Column, String, Text, Boolean, Integer, ForeignKey, UniqueConstraint, DateTime
 from sqlalchemy.orm import relationship
+from datetime import datetime
 from database import Base
 import datetime as dt
 
@@ -62,8 +63,20 @@ class Blackout(Base):
     reason = Column(Text)
     resource = relationship("Resource", back_populates="blackouts")
 
+class User(Base):
+    __tablename__ = "users"
+    id = Column(String, primary_key=True)
+    email = Column(String, unique=True, nullable=False, index=True)
+    password_hash = Column(String, nullable=False)
+    name = Column(String, nullable=False)
+    phone = Column(String, nullable=True)
+    address = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Appointment(Base):
     __tablename__ = "appointments"
+    __table_args__ = {'extend_existing': True}
     id = Column(String, primary_key=True)
     practice_id = Column(String, ForeignKey("practices.id", ondelete="CASCADE"), nullable=False)
     resource_id = Column(String, ForeignKey("resources.id", ondelete="RESTRICT"), nullable=False)
