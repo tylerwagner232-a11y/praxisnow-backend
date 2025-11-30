@@ -109,12 +109,17 @@ def generate_slots(
                 continue
 
             # SlotOut erwartet typischerweise diese Felder:
-            slots.append(
-                SlotOut(
-                    start_ts=start_local.strftime("%Y-%m-%d %H:%M"),
-                    end_ts=end_local.strftime("%Y-%m-%d %H:%M"),
-                    is_booked=False,
-                )
-            )
+            start_utc = start_local.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+end_utc = end_local.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+
+slots.append(
+    SlotOut(
+        start_ts_utc=start_utc,
+        end_ts_utc=end_utc,
+        resource_id=resource_id,
+        service_id=service_id,
+        is_booked=False,
+    )
+)
 
     return slots
