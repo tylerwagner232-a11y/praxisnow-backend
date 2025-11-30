@@ -58,9 +58,12 @@ def current_user(req: Request, db: Session = Depends(get_db)) -> User:
 
 # --- Authentifizierung: Registrieren, Login, Logout, Me ---
 @app.post("/auth/register", response_model=UserOut)
-def register(payload: RegisterIn, db: Session = Depends(get_db), resp: Response = None):
-    if db.query(User).filter(User.email == payload.email).first():
+def register(payload: RegisterIn, response: Response, db: Session = Depends(get_db)):
+    # E-Mail darf nicht doppelt existieren
+    existing = db.query(User).filter(User.email == payload.email).first()
+    if existing:
         raise HTTPException(400, "E-Mail bereits registriert")
+
     u = User(
         id=str(uuid.uuid4()),
         email=payload.email,
@@ -72,22 +75,30 @@ def register(payload: RegisterIn, db: Session = Depends(get_db), resp: Response 
     db.add(u)
     db.commit()
     db.refresh(u)
+
     token = make_jwt(u.id)
-    resp.set_cookie(
+    response.set_cookie(
         "session", token,
-        httponly=True, samesite="lax", secure=True, max_age=7*24*3600
+        httponly=True, samesite="lax", secure=True, max_age=7*24*3600, path="/"
     )
     return UserOut.model_validate(u.__dict__)
 
 @app.post("/auth/login", response_model=UserOut)
-def login(payload: LoginIn, db: Session = Depends(get_db), resp: Response = None):
+def login(payload: LoginIn, response: Response, db: Session = Depends(get_db)):
     u = db.query(User).filter(User.email == payload.email).first()
-    if not u or not check_pw(payload.password, u.password_hash):
+    if not u:
         raise HTTPException(401, "Ungültige Zugangsdaten")
+    try:
+        ok = check_pw(payload.password, u.password_hash)
+    except Exception:
+        ok = False
+    if not ok:
+        raise HTTPException(401, "Ungültige Zugangsdaten")
+
     token = make_jwt(u.id)
-    resp.set_cookie(
+    response.set_cookie(
         "session", token,
-        httponly=True, samesite="lax", secure=True, max_age=7*24*3600
+        httponly=True, samesite="lax", secure=True, max_age=7*24*3600, path="/"
     )
     return UserOut.model_validate(u.__dict__)
 

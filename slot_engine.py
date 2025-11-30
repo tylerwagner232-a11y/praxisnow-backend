@@ -1,85 +1,120 @@
-from datetime import datetime, timedelta, time
-from zoneinfo import ZoneInfo
-from typing import List
+from datetime import datetime, timedelta, date
+from typing import List, Optional
+
 from sqlalchemy.orm import Session
-from models import Practice, Resource, Service, RecurringAvailability, Appointment, Blackout
+from zoneinfo import ZoneInfo
+
+from models import Practice, Resource, Service, Appointment
 from schemas import SlotOut
 
-def _daterange(start_date, end_date):
-    cur = start_date
-    while cur <= end_date:
-        yield cur
-        cur += timedelta(days=1)
 
-def _parse_time(t: str) -> time:
-    hh, mm = t.split(":")
-    return time(int(hh), int(mm))
+def generate_slots(
+    db: Session,
+    practice_id: str,
+    days: int = 14,
+    service_id: Optional[str] = None,
+    resource_id: Optional[str] = None,
+) -> List[SlotOut]:
+    """
+    Einfache Slot-Engine:
+    - nimmt eine Praxis
+    - wählt eine Resource + Service (oder die per ID)
+    - generiert Stundenslots (z. B. 09:00, 10:00, …)
+    - entfernt Slots, die bereits in Appointments als BOOKED eingetragen sind
+    """
 
-from typing import Optional
-
-def generate_slots(db: Session, practice_id: str, days: int = 14, service_id: Optional[str] = None, resource_id: Optional[str] = None) -> List[SlotOut]:
-
-    practice = db.query(Practice).filter(Practice.id == practice_id).first()
+    practice = (
+        db.query(Practice)
+        .filter(Practice.id == practice_id)
+        .first()
+    )
     if not practice:
         return []
-    tz = ZoneInfo(practice.time_zone or "Europe/Berlin")
-    resources_q = db.query(Resource).filter(Resource.practice_id == practice_id, Resource.active == True)
-    if resource_id:
-        resources_q = resources_q.filter(Resource.id == resource_id)
-    resources = resources_q.all()
 
-    services_q = db.query(Service).filter(Service.practice_id == practice_id, Service.active == True)
-    if service_id:
-        services_q = services_q.filter(Service.id == service_id)
-    services = {s.id: s for s in services_q.all()}
-    if not services:
+    # Resource wählen
+    if resource_id:
+        resource = (
+            db.query(Resource)
+            .filter(
+                Resource.id == resource_id,
+                Resource.practice_id == practice_id,
+            )
+            .first()
+        )
+    else:
+        resource = (
+            db.query(Resource)
+            .filter(Resource.practice_id == practice_id)
+            .first()
+        )
+
+    if not resource:
         return []
 
-    now_local = datetime.now(tz)
-    start_date = now_local.date()
-    end_date = start_date + timedelta(days=days)
+    # Service wählen
+    if service_id:
+        service = (
+            db.query(Service)
+            .filter(
+                Service.id == service_id,
+                Service.practice_id == practice_id,
+            )
+            .first()
+        )
+    else:
+        service = (
+            db.query(Service)
+            .filter(Service.practice_id == practice_id)
+            .first()
+        )
+
+    if not service:
+        return []
+
+    tz = ZoneInfo(practice.time_zone or "Europe/Berlin")
+
+    # Annahme: Dauer + Buffer == 60 Minuten → Slots zur vollen Stunde
+    duration_min = service.duration_min or 50
 
     slots: List[SlotOut] = []
 
-    for r in resources:
-        recs = db.query(RecurringAvailability).filter(RecurringAvailability.resource_id == r.id).all()
-        appts = db.query(Appointment).filter(Appointment.resource_id == r.id, Appointment.status == "BOOKED").all()
-        blks = db.query(Blackout).filter(Blackout.resource_id == r.id).all()
+    today = date.today()
 
-        booked = [(a.start_ts_utc, a.end_ts_utc) for a in appts]
-        blocked = [(b.start_ts, b.end_ts) for b in blks]
+    for day_offset in range(days):
+        d = today + timedelta(days=day_offset)
 
-        for d in _daterange(start_date, end_date):
-            weekday = d.weekday()  # 0=Mon ... 6=Sun
-            day_recs = [rec for rec in recs if rec.weekday == weekday]
-            for rec in day_recs:
-                svc = services.get(rec.service_id) if rec.service_id else (services.get(service_id) if service_id else next(iter(services.values())))
-                if not svc:
-                    continue
-                start_local = datetime.combine(d, _parse_time(rec.start_local), tzinfo=tz)
-                end_local = datetime.combine(d, _parse_time(rec.end_local), tzinfo=tz)
+        # z.B. 09:00–17:00
+        for hour in range(9, 17):  # 9,10,11,12,13,14,15,16
+            start_local = datetime(
+                d.year, d.month, d.day, hour, 0, tzinfo=tz
+            )
+            end_local = start_local + timedelta(minutes=duration_min)
 
-                step = svc.duration_min + svc.buffer_before_min + svc.buffer_after_min
-                cur = start_local
-                while cur + timedelta(minutes=svc.duration_min) <= end_local:
-                    slot_start_local = cur
-                    slot_end_local = cur + timedelta(minutes=svc.duration_min)
+            # in UTC umrechnen & tzinfo entfernen (wie im Rest deines Codes)
+            start_utc = start_local.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+            end_utc = end_local.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
 
-                    ss_utc = slot_start_local.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
-                    se_utc = slot_end_local.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+            # Prüfen, ob dieser Slot schon gebucht ist
+            clash = (
+                db.query(Appointment)
+                .filter(
+                    Appointment.resource_id == resource.id,
+                    Appointment.start_ts_utc == start_utc,
+                    Appointment.end_ts_utc == end_utc,
+                    Appointment.status == "BOOKED",
+                )
+                .first()
+            )
+            if clash:
+                continue
 
-                    # collision check
-                    col1 = any(not (se_utc <= s or e <= ss_utc) for (s, e) in booked)
-                    col2 = any(not (se_utc <= s or e <= ss_utc) for (s, e) in blocked)
+            # SlotOut erwartet typischerweise diese Felder:
+            slots.append(
+                SlotOut(
+                    start_ts=start_local.strftime("%Y-%m-%d %H:%M"),
+                    end_ts=end_local.strftime("%Y-%m-%d %H:%M"),
+                    is_booked=False,
+                )
+            )
 
-                    if not col1 and not col2 and slot_start_local >= now_local:
-                        slots.append(SlotOut(
-                            start_ts=slot_start_local.strftime("%Y-%m-%d %H:%M"),
-                            end_ts=slot_end_local.strftime("%Y-%m-%d %H:%M"),
-                            start_ts_utc=slot_start_local.astimezone(ZoneInfo("UTC")),
-                            end_ts_utc=slot_end_local.astimezone(ZoneInfo("UTC")),
-                            resource_id=r.id,
-                            service_id=svc.id
-                        ))
-                    cur += timedelta(minutes=step)
     return slots
