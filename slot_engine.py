@@ -17,10 +17,10 @@ def generate_slots(
     """
     Generiert Slots für eine Praxis für X Tage.
 
-    - Verwendet die Praxis-Zeitzone (oder Europe/Berlin als Default)
-    - Nutzt Service-Dauer (service.duration_min)
-    - Baut Slots zwischen 09:00 und 17:00
-    - Gibt SlotOut-Objekte mit start_ts / end_ts / resource_id / service_id / is_booked zurück
+    - verwendet Praxis-Zeitzone (oder Europe/Berlin)
+    - nutzt service.duration_min
+    - baut Slots zwischen 09:00 und 17:00
+    - gibt SlotOut mit start_ts_utc / end_ts_utc / resource_id / service_id / is_booked zurück
     """
     slots: list[SlotOut] = []
 
@@ -48,7 +48,7 @@ def generate_slots(
     tz = ZoneInfo(practice.time_zone or "Europe/Berlin")
     duration_min = service.duration_min
 
-    # Öffnungszeiten (kannst du später dynamisch machen)
+    # Öffnungszeiten (später anpassbar)
     WORK_START_HOUR = 9   # 09:00
     WORK_END_HOUR = 17    # 17:00
 
@@ -57,7 +57,6 @@ def generate_slots(
     for day_offset in range(days):
         current_date = today + timedelta(days=day_offset)
 
-        # Tagesspanne lokal
         day_start_local = datetime(
             year=current_date.year,
             month=current_date.month,
@@ -80,21 +79,21 @@ def generate_slots(
             start_local = t
             end_local = t + timedelta(minutes=duration_min)
 
-            # Ausgabeformat: "YYYY-MM-DD HH:MM" (passt meist gut für Frontend)
-            start_str = start_local.strftime("%Y-%m-%d %H:%M")
-            end_str = end_local.strftime("%Y-%m-%d %H:%M")
+            # In UTC konvertieren (tzinfo entfernen, damit DB/Timestamps sauber sind)
+            start_utc = start_local.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+            end_utc = end_local.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
 
             slots.append(
                 SlotOut(
-                    start_ts=start_str,
-                    end_ts=end_str,
+                    start_ts_utc=start_utc,
+                    end_ts_utc=end_utc,
                     resource_id=resource_id,
                     service_id=service_id,
                     is_booked=False,
                 )
             )
 
-            # zum nächsten Slot springen
+            # nächster Slot
             t = end_local
 
     return slots
