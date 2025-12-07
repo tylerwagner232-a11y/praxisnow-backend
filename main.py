@@ -78,9 +78,15 @@ def register(payload: RegisterIn, response: Response, db: Session = Depends(get_
 
     token = make_jwt(u.id)
     response.set_cookie(
-        "session", token,
-        httponly=True, samesite="lax", secure=True, max_age=7*24*3600, path="/"
-    )
+    "session",
+    token,
+    httponly=True,
+    samesite="none",   # <--- statt "lax"
+    secure=True,
+    max_age=7*24*3600,
+    path="/",
+)
+
     return UserOut.model_validate(u.__dict__)
 
 @app.post("/auth/login", response_model=UserOut)
@@ -97,9 +103,15 @@ def login(payload: LoginIn, response: Response, db: Session = Depends(get_db)):
 
     token = make_jwt(u.id)
     response.set_cookie(
-        "session", token,
-        httponly=True, samesite="lax", secure=True, max_age=7*24*3600, path="/"
-    )
+    "session",
+    token,
+    httponly=True,
+    samesite="none",   # <--- WICHTIG! statt "lax"
+    secure=True,
+    max_age=7*24*3600,
+    path="/",
+)
+
     return UserOut.model_validate(u.__dict__)
 
 @app.get("/auth/me", response_model=UserOut)
@@ -108,7 +120,7 @@ def me(u: User = Depends(current_user)):
 
 @app.post("/auth/logout")
 def logout(resp: Response):
-    resp.delete_cookie("session")
+    resp.delete_cookie("session", path="/")
     return {"ok": True}
 
 
