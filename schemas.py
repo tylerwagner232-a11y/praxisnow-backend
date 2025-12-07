@@ -55,12 +55,17 @@ class PracticeDetail(BaseModel):
         from_attributes = True
 
 class SlotOut(BaseModel):
-    start_ts: str  # ISO local string
-    end_ts: str
-    start_ts_utc: datetime
-    end_ts_utc: datetime
+    # Zeitangaben optional – je nach Verwendung
+    start_ts: Optional[str] = None          # lokale Zeit als String (z.B. "2025-12-03 09:00")
+    end_ts: Optional[str] = None
+
+    start_ts_utc: Optional[datetime] = None # UTC-Zeit im Backend
+    end_ts_utc: Optional[datetime] = None
+
     resource_id: str
     service_id: str
+    is_booked: bool
+
 
 class AppointmentIn(BaseModel):
     practice_id: str
